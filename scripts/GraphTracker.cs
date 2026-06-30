@@ -1,131 +1,578 @@
+// GraphTracker.cs – versão Unity (sem System.Drawing)
+// Requer: EPPlus 8.6.1 DLL em Assets/Plugins/EPPlus.dll
+// Como usar: chame GraphTracker.GerarExcel(csvPath, xlsxPath) a partir de qualquer MonoBehaviour
+
 using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
-using UnityEngine;
-
-public class GraphTracker : MonoBehaviour
+using System.Linq;
+using OfficeOpenXml;
+using OfficeOpenXml.Drawing.Chart;
+using OfficeOpenXml.Style;
+using DrawingColor = System.Drawing.Color;
+using System.Drawing;
+public static class GraphTracker
 {
-    [Header("Arquivo CSV")]
-    public string csvFileName = "Dados_Marcha_2.csv";
+    // ─────────────────────────────────────────────
+    // Cores em hex (sem System.Drawing)
+    // ─────────────────────────────────────────────
+    private const string COR_AZUL_ESCURO = "1F497D"; // cabeçalhos principais
+    private const string COR_AZUL_CLARO = "BDD7EE"; // cabeçalho secundário
+    private const string COR_ZEBRA = "D9E1F2"; // linhas alternadas
+    private const string COR_BRANCO = "FFFFFF"; // texto sobre fundo escuro
 
-    [Header("Escala do gr�fico")]
-    public float xScale = 0.01f;
-    public float yScale = 1f;
-
-    [Header("Eixo para plotar")]
-    public Axis axis = Axis.X;
-
-    public enum Axis
+    // ─────────────────────────────────────────────
+    // Modelo de dados
+    // ─────────────────────────────────────────────
+    private class Registro
     {
-        X,
-        Y,
-        Z
+        public double Tempo { get; set; }
+        public string Id { get; set; }
+        public double RotX { get; set; }
+        public double RotY { get; set; }
+        public double RotZ { get; set; }
+        public double DistanciaPasso { get; set; }
+        public double DistanciaTotal { get; set; }
     }
 
-    private Dictionary<int, List<Vector3>> trackers =
-        new Dictionary<int, List<Vector3>>();
-
-    private readonly Color[] colors =
+    // Mapeamento de número do tracker → nome amigável
+    private static readonly Dictionary<int, string> NomesTrackers = new Dictionary<int, string>
     {
-        Color.red,
-        Color.blue,
-        Color.green,
-        Color.yellow,
-        Color.magenta,
-        Color.cyan
+        { 1, "Quadril"       },
+        { 2, "Coxa Esquerda" },
+        { 3, "Coxa Direita"  },
+        { 4, "Pe Esquerdo"   },
+        { 5, "Pe Direito"    },
+        { 6, "Tornozelo"     },
     };
 
-    void Start()
+    // ─────────────────────────────────────────────
+    // Ponto de entrada público
+    // ─────────────────────────────────────────────
+    public static void GerarExcel(string csvPath, string xlsxPath)
     {
-        LoadCSV();
-        DrawGraphs();
-    }
+        ExcelPackage.License.SetNonCommercialPersonal("pedro");
 
-    void LoadCSV()
-    {
-        string path = Path.Combine(Application.streamingAssetsPath, csvFileName);
+        List<Registro> dados = LerCsv(csvPath);
 
-        if (!File.Exists(path))
+        if (dados.Count == 0)
         {
-            Debug.LogError($"Arquivo n�o encontrado: {path}");
+            UnityEngine.Debug.LogWarning("[GraphTracker] Nenhum dado encontrado no CSV: " + csvPath);
             return;
         }
 
-        string[] lines = File.ReadAllLines(path);
-
-        for (int i = 1; i < lines.Length; i++)
+        using (var excel = new ExcelPackage())
         {
-            string[] data = lines[i].Split(';');
+            CriarPlanilhaDados(excel, dados);
+            CriarPlanilhaDistancia(excel, dados);
+            CriarPlanilhaPassos(excel, dados);
+            CriarPlanilhaRotacao(excel, dados, 1, "Quadril");
+            CriarPlanilhaRotacao(excel, dados, 4, "Pe Esquerdo");
+            CriarPlanilhaRotacao(excel, dados, 5, "Pe Direito");
+            CriarPlanilhaComparacao(excel, dados);
+            CriarDashboard(excel, dados);
 
-            if (data.Length < 5)
-                continue;
-
-            int trackerID = ExtractTrackerID(data[1]);
-
-            float x = float.Parse(
-                data[2].Replace(',', '.'),
-                CultureInfo.InvariantCulture);
-
-            float y = float.Parse(
-                data[3].Replace(',', '.'),
-                CultureInfo.InvariantCulture);
-
-            float z = float.Parse(
-                data[4].Replace(',', '.'),
-                CultureInfo.InvariantCulture);
-
-            if (!trackers.ContainsKey(trackerID))
-                trackers[trackerID] = new List<Vector3>();
-
-            trackers[trackerID].Add(new Vector3(x, y, z));
+            excel.SaveAs(new FileInfo(xlsxPath));
         }
+
+        UnityEngine.Debug.Log("[GraphTracker] Excel gerado em: " + xlsxPath);
     }
 
-    int ExtractTrackerID(string id)
+    // ─────────────────────────────────────────────
+    // Leitura do CSV
+    // ─────────────────────────────────────────────
+    private static List<Registro> LerCsv(string path)
     {
-        string[] parts = id.Split('/');
-        return int.Parse(parts[3]);
-    }
+        var lista = new List<Registro>();
 
-    void DrawGraphs()
-    {
-        foreach (var tracker in trackers)
+        if (!File.Exists(path))
         {
-            GameObject graphObj = new GameObject($"Tracker_{tracker.Key}");
+            UnityEngine.Debug.LogError("[GraphTracker] Arquivo nao encontrado: " + path);
+            return lista;
+        }
 
-            LineRenderer line = graphObj.AddComponent<LineRenderer>();
+        string[] linhas = File.ReadAllLines(path);
+        if (linhas.Length < 2) return lista;
 
-            line.material = new Material(
-                Shader.Find("Sprites/Default"));
+        // Detecta índices pelo cabeçalho (case-insensitive)
+        string[] cabecalho = linhas[0].Split(',');
+        int idxId = FindIndex(cabecalho, "id");
+        int idxTempo = FindIndex(cabecalho, "tempo");
+        int idxRotX = FindIndex(cabecalho, "rotx");
+        int idxRotY = FindIndex(cabecalho, "roty");
+        int idxRotZ = FindIndex(cabecalho, "rotz");
 
-            line.startWidth = 0.05f;
-            line.endWidth = 0.05f;
+        // Fallback para ordem padrão id,tempo,rotX,rotY,rotZ
+        if (idxId < 0) idxId = 0;
+        if (idxTempo < 0) idxTempo = 1;
+        if (idxRotX < 0) idxRotX = 2;
+        if (idxRotY < 0) idxRotY = 3;
+        if (idxRotZ < 0) idxRotZ = 4;
 
-            line.startColor = colors[(tracker.Key - 1) % colors.Length];
-            line.endColor = colors[(tracker.Key - 1) % colors.Length];
+        int colMax = Math.Max(idxId, Math.Max(idxTempo, Math.Max(idxRotX, Math.Max(idxRotY, idxRotZ))));
 
-            List<Vector3> values = tracker.Value;
+        var ultimasPosicoes = new Dictionary<string, double[]>();
+        var distanciasAcum = new Dictionary<string, double>();
 
-            line.positionCount = values.Count;
+        for (int i = 1; i < linhas.Length; i++)
+        {
+            if (string.IsNullOrWhiteSpace(linhas[i])) continue;
 
-            for (int i = 0; i < values.Count; i++)
+            string[] cols = linhas[i].Split(',');
+            if (cols.Length <= colMax) continue;
+
+            var reg = new Registro
             {
-                float value = axis switch
-                {
-                    Axis.X => values[i].x,
-                    Axis.Y => values[i].y,
-                    Axis.Z => values[i].z,
-                    _ => values[i].x
-                };
+                Id = cols[idxId].Trim(),
+                Tempo = ParseDouble(cols[idxTempo]),
+                RotX = ParseDouble(cols[idxRotX]),
+                RotY = ParseDouble(cols[idxRotY]),
+                RotZ = ParseDouble(cols[idxRotZ]),
+            };
 
-                Vector3 point = new Vector3(
-                    i * xScale,
-                    value * yScale,
-                    0f);
-
-                line.SetPosition(i, point);
+            // Distância angular entre amostras consecutivas do mesmo tracker
+            double passo = 0;
+            if (ultimasPosicoes.ContainsKey(reg.Id))
+            {
+                double[] prev = ultimasPosicoes[reg.Id];
+                double dx = reg.RotX - prev[0];
+                double dy = reg.RotY - prev[1];
+                double dz = reg.RotZ - prev[2];
+                passo = Math.Sqrt(dx * dx + dy * dy + dz * dz);
             }
+
+            ultimasPosicoes[reg.Id] = new double[] { reg.RotX, reg.RotY, reg.RotZ };
+
+            if (!distanciasAcum.ContainsKey(reg.Id)) distanciasAcum[reg.Id] = 0;
+            distanciasAcum[reg.Id] += passo;
+
+            reg.DistanciaPasso = passo;
+            reg.DistanciaTotal = distanciasAcum[reg.Id];
+
+            lista.Add(reg);
         }
+
+        return lista;
+    }
+
+    private static int FindIndex(string[] arr, string chave)
+    {
+        for (int i = 0; i < arr.Length; i++)
+            if (arr[i].Trim().Equals(chave, StringComparison.OrdinalIgnoreCase)) return i;
+        return -1;
+    }
+
+    private static double ParseDouble(string s)
+    {
+        double v;
+        if (double.TryParse(s.Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out v)) return v;
+        return 0;
+    }
+
+    // ─────────────────────────────────────────────
+    // Helpers de estilo (sem System.Drawing)
+    // ─────────────────────────────────────────────
+    private static void EstilizarCabecalho(ExcelRange celulas)
+    {
+        celulas.Style.Font.Bold = true;
+        celulas.Style.Fill.PatternType = ExcelFillStyle.Solid;
+
+        celulas.Style.Fill.BackgroundColor.SetColor(HexParaColor(COR_AZUL_ESCURO));
+        celulas.Style.Font.Color.SetColor(HexParaColor(COR_BRANCO));
+
+        celulas.Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+    }
+
+    private static void AplicarZebra(ExcelRange celulas)
+    {
+        celulas.Style.Fill.PatternType = ExcelFillStyle.Solid;
+        celulas.Style.Fill.BackgroundColor.SetColor(HexParaColor(COR_ZEBRA));
+    }
+
+    private static DrawingColor HexParaColor(string hex)
+    {
+        hex = hex.Replace("#", "");
+
+        int r = Convert.ToInt32(hex.Substring(0, 2), 16);
+        int g = Convert.ToInt32(hex.Substring(2, 2), 16);
+        int b = Convert.ToInt32(hex.Substring(4, 2), 16);
+
+        return DrawingColor.FromArgb(r, g, b);
+    }
+
+    // Converte hex "RRGGBB" → int que o EPPlus aceita em SetColor(int argb)
+
+
+    private static ExcelChart CriarGraficoBase(ExcelWorksheet ws, string nome, string titulo,
+        eChartType tipo, int linhaPos, int colPos, int largura, int altura)
+    {
+        var chart = ws.Drawings.AddChart(nome, tipo);
+        chart.Title.Text = titulo;
+        chart.SetPosition(linhaPos, 0, colPos, 0);
+        chart.SetSize(largura, altura);
+        return chart;
+    }
+
+    private static string NomeAmigavel(string id)
+    {
+        foreach (var kv in NomesTrackers)
+            if (id.Contains("/trackers/" + kv.Key + "/")) return kv.Value;
+        return id;
+    }
+
+    // ─────────────────────────────────────────────
+    // 1. Planilha DADOS
+    // ─────────────────────────────────────────────
+    private static void CriarPlanilhaDados(ExcelPackage excel, List<Registro> dados)
+    {
+        var ws = excel.Workbook.Worksheets.Add("Dados");
+
+        string[] cols = { "Tempo (s)", "Tracker (ID)", "Rot X", "Rot Y", "Rot Z", "Dist. Passo", "Dist. Total" };
+        for (int c = 0; c < cols.Length; c++)
+            ws.Cells[1, c + 1].Value = cols[c];
+
+        EstilizarCabecalho(ws.Cells[1, 1, 1, cols.Length]);
+
+        int linha = 2;
+        foreach (var d in dados)
+        {
+            ws.Cells[linha, 1].Value = d.Tempo;
+            ws.Cells[linha, 2].Value = d.Id;
+            ws.Cells[linha, 3].Value = d.RotX;
+            ws.Cells[linha, 4].Value = d.RotY;
+            ws.Cells[linha, 5].Value = d.RotZ;
+            ws.Cells[linha, 6].Value = d.DistanciaPasso;
+            ws.Cells[linha, 7].Value = d.DistanciaTotal;
+
+            if (linha % 2 == 0)
+                AplicarZebra(ws.Cells[linha, 1, linha, cols.Length]);
+
+            linha++;
+        }
+
+        ws.Cells.AutoFitColumns();
+        ws.View.FreezePanes(2, 1);
+    }
+
+    // ─────────────────────────────────────────────
+    // 2. Planilha DISTÂNCIA TOTAL
+    // ─────────────────────────────────────────────
+    private static void CriarPlanilhaDistancia(ExcelPackage excel, List<Registro> dados)
+    {
+        var ws = excel.Workbook.Worksheets.Add("Distancia Total");
+
+        // Usa o primeiro tracker (por ordem alfabética de ID) como referência de tempo
+        var trackerRef = dados.GroupBy(d => d.Id).OrderBy(g => g.Key).First().ToList();
+
+        ws.Cells[1, 1].Value = "Tempo (s)";
+        ws.Cells[1, 2].Value = "Dist. Total";
+        EstilizarCabecalho(ws.Cells[1, 1, 1, 2]);
+
+        int linha = 2;
+        foreach (var d in trackerRef)
+        {
+            ws.Cells[linha, 1].Value = d.Tempo;
+            ws.Cells[linha, 2].Value = d.DistanciaTotal;
+            linha++;
+        }
+
+        ws.Cells.AutoFitColumns();
+
+        var chart = CriarGraficoBase(ws, "graficoDistancia",
+            "Distancia Total x Tempo", eChartType.Line, 1, 4, 900, 450);
+
+        var serie = chart.Series.Add(
+            ws.Cells[2, 2, linha - 1, 2],
+            ws.Cells[2, 1, linha - 1, 1]);
+        serie.Header = "Distancia Total";
+
+        chart.XAxis.Title.Text = "Tempo (s)";
+        chart.YAxis.Title.Text = "Distancia (u.a.)";
+    }
+
+    // ─────────────────────────────────────────────
+    // 3. Planilha PASSOS
+    // ─────────────────────────────────────────────
+    private static void CriarPlanilhaPassos(ExcelPackage excel, List<Registro> dados)
+    {
+        var ws = excel.Workbook.Worksheets.Add("Passos");
+
+        // Agrupa por tempo e soma passo de todos os trackers
+        var porTempo = dados
+            .GroupBy(d => d.Tempo)
+            .Select(g => new { Tempo = g.Key, Passo = g.Sum(x => x.DistanciaPasso) })
+            .OrderBy(x => x.Tempo)
+            .ToList();
+
+        ws.Cells[1, 1].Value = "Tempo (s)";
+        ws.Cells[1, 2].Value = "Dist. Passo";
+        EstilizarCabecalho(ws.Cells[1, 1, 1, 2]);
+
+        int linha = 2;
+        foreach (var p in porTempo)
+        {
+            ws.Cells[linha, 1].Value = p.Tempo;
+            ws.Cells[linha, 2].Value = p.Passo;
+            linha++;
+        }
+
+        ws.Cells.AutoFitColumns();
+
+        var chart = CriarGraficoBase(ws, "graficoPasso",
+            "Distancia dos Passos", eChartType.ColumnClustered, 1, 4, 900, 450);
+
+        var serie = chart.Series.Add(
+            ws.Cells[2, 2, linha - 1, 2],
+            ws.Cells[2, 1, linha - 1, 1]);
+        serie.Header = "Dist. Passo";
+
+        chart.XAxis.Title.Text = "Tempo (s)";
+        chart.YAxis.Title.Text = "Distancia angular";
+    }
+
+    // ─────────────────────────────────────────────
+    // 4. Planilha de ROTAÇÃO por tracker
+    // ─────────────────────────────────────────────
+    private static void CriarPlanilhaRotacao(ExcelPackage excel, List<Registro> dados,
+        int numTracker, string nomePlanilha)
+    {
+        var filtrado = dados
+            .Where(d => d.Id.Contains("/trackers/" + numTracker + "/"))
+            .OrderBy(d => d.Tempo)
+            .ToList();
+
+        if (filtrado.Count == 0)
+        {
+            UnityEngine.Debug.LogWarning("[GraphTracker] Sem dados para tracker " + numTracker + " (" + nomePlanilha + ")");
+            return;
+        }
+
+        var ws = excel.Workbook.Worksheets.Add(nomePlanilha);
+
+        ws.Cells[1, 1].Value = "Tempo (s)";
+        ws.Cells[1, 2].Value = "Rot X";
+        ws.Cells[1, 3].Value = "Rot Y";
+        ws.Cells[1, 4].Value = "Rot Z";
+        EstilizarCabecalho(ws.Cells[1, 1, 1, 4]);
+
+        int linha = 2;
+        foreach (var d in filtrado)
+        {
+            ws.Cells[linha, 1].Value = d.Tempo;
+            ws.Cells[linha, 2].Value = d.RotX;
+            ws.Cells[linha, 3].Value = d.RotY;
+            ws.Cells[linha, 4].Value = d.RotZ;
+
+            if (linha % 2 == 0)
+                AplicarZebra(ws.Cells[linha, 1, linha, 4]);
+
+            linha++;
+        }
+
+        ws.Cells.AutoFitColumns();
+
+        string nomeGrafico = "grafico" + nomePlanilha.Replace(" ", "");
+        var chart = CriarGraficoBase(ws, nomeGrafico,
+            "Rotacao – " + nomePlanilha, eChartType.Line, 1, 6, 900, 450);
+
+        string[] headers = { "Rot X", "Rot Y", "Rot Z" };
+        for (int c = 0; c < 3; c++)
+        {
+            var serie = chart.Series.Add(
+                ws.Cells[2, c + 2, linha - 1, c + 2],
+                ws.Cells[2, 1, linha - 1, 1]);
+            serie.Header = headers[c];
+        }
+
+        chart.XAxis.Title.Text = "Tempo (s)";
+        chart.YAxis.Title.Text = "Rotacao (graus)";
+        chart.Legend.Position = eLegendPosition.Bottom;
+    }
+
+    // ─────────────────────────────────────────────
+    // 5. Planilha COMPARAÇÃO
+    // ─────────────────────────────────────────────
+    private static void CriarPlanilhaComparacao(ExcelPackage excel, List<Registro> dados)
+    {
+        var ws = excel.Workbook.Worksheets.Add("Comparacao Trackers");
+
+        var grupos = dados.GroupBy(d => d.Id).OrderBy(g => g.Key).ToList();
+        var tempos = dados.Select(d => d.Tempo).Distinct().OrderBy(t => t).ToList();
+
+        // Cabeçalho dinâmico
+        ws.Cells[1, 1].Value = "Tempo (s)";
+        int col = 2;
+        foreach (var g in grupos)
+        {
+            string nome = NomeAmigavel(g.Key);
+            ws.Cells[1, col].Value = nome + " – RotX";
+            ws.Cells[1, col + 1].Value = nome + " – RotY";
+            ws.Cells[1, col + 2].Value = nome + " – RotZ";
+            col += 3;
+        }
+        EstilizarCabecalho(ws.Cells[1, 1, 1, col - 1]);
+
+        // Índice rápido (id, tempo) → Registro
+        var idx = new Dictionary<string, Registro>();
+        foreach (var d in dados)
+        {
+            string key = d.Id + "|" + d.Tempo.ToString("R");
+            if (!idx.ContainsKey(key)) idx[key] = d;
+        }
+
+        int linha = 2;
+        foreach (double t in tempos)
+        {
+            ws.Cells[linha, 1].Value = t;
+            int c = 2;
+            foreach (var g in grupos)
+            {
+                string key = g.Key + "|" + t.ToString("R");
+                if (idx.ContainsKey(key))
+                {
+                    var reg = idx[key];
+                    ws.Cells[linha, c].Value = reg.RotX;
+                    ws.Cells[linha, c + 1].Value = reg.RotY;
+                    ws.Cells[linha, c + 2].Value = reg.RotZ;
+                }
+                c += 3;
+            }
+
+            if (linha % 2 == 0)
+                AplicarZebra(ws.Cells[linha, 1, linha, col - 1]);
+
+            linha++;
+        }
+
+        ws.Cells.AutoFitColumns();
+
+        // Gráfico comparando RotY de todos os trackers
+        var chart = CriarGraficoBase(ws, "graficoComparacao",
+            "Comparacao RotY – Todos os Trackers", eChartType.Line, 1, col, 1000, 500);
+
+        int sCol = 2;
+        foreach (var g in grupos)
+        {
+            var serie = chart.Series.Add(
+                ws.Cells[2, sCol + 1, linha - 1, sCol + 1],
+                ws.Cells[2, 1, linha - 1, 1]);
+            serie.Header = NomeAmigavel(g.Key);
+            sCol += 3;
+        }
+
+        chart.XAxis.Title.Text = "Tempo (s)";
+        chart.YAxis.Title.Text = "Rot Y (graus)";
+        chart.Legend.Position = eLegendPosition.Bottom;
+    }
+
+    // ─────────────────────────────────────────────
+    // 6. DASHBOARD com estatísticas
+    // ─────────────────────────────────────────────
+    private static void CriarDashboard(ExcelPackage excel, List<Registro> dados)
+    {
+        var ws = excel.Workbook.Worksheets.Add("Dashboard");
+
+        // Título principal
+        ws.Cells["A1"].Value = "GRAPH TRACKER – Dashboard de Analise";
+        ws.Cells["A1:L1"].Merge = true;
+        ws.Cells["A1"].Style.Font.Size = 16;
+        ws.Cells["A1"].Style.Font.Bold = true;
+        ws.Cells["A1"].Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+        ws.Cells["A1"].Style.Fill.PatternType = ExcelFillStyle.Solid;
+        ws.Cells["A1"].Style.Fill.BackgroundColor.SetColor(HexParaColor(COR_AZUL_ESCURO));
+        ws.Cells["A1"].Style.Font.Color.SetColor(HexParaColor(COR_BRANCO));
+
+        ws.Cells["A2"].Value = "Gerado em: " + DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss");
+        ws.Cells["A2:L2"].Merge = true;
+        ws.Cells["A2"].Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+        ws.Cells["A2"].Style.Font.Italic = true;
+
+        // Resumo geral
+        int r = 4;
+        ws.Cells[r, 1, r, 4].Merge = true;
+        ws.Cells[r, 1].Value = "Resumo Geral";
+        EstilizarCabecalho(ws.Cells[r, 1, r, 4]);
+        r++;
+
+        var grupos = dados.GroupBy(d => d.Id).OrderBy(g => g.Key).ToList();
+        double tempoTotal = dados.Max(d => d.Tempo) - dados.Min(d => d.Tempo);
+
+        EscreverPar(ws, r++, 1, "Total de registros", dados.Count.ToString());
+        EscreverPar(ws, r++, 1, "Trackers ativos", grupos.Count.ToString());
+        EscreverPar(ws, r++, 1, "Duracao da sessao (s)", tempoTotal.ToString("F2"));
+        EscreverPar(ws, r++, 1, "Freq. media de amostragem",
+            (dados.Count / Math.Max(tempoTotal, 1)).ToString("F1") + " Hz");
+        r++;
+
+        // Tabela de estatísticas
+        ws.Cells[r, 1, r, 12].Merge = true;
+        ws.Cells[r, 1].Value = "Estatisticas por Tracker";
+        EstilizarCabecalho(ws.Cells[r, 1, r, 12]);
+        r++;
+
+        string[] cab = {
+        "Tracker", "N", "Tempo Min (s)", "Tempo Max (s)",
+        "RotX Media", "RotX Desvpad", "RotX Min", "RotX Max",
+        "RotY Media", "RotY Desvpad",
+        "RotZ Media", "RotZ Desvpad"
+    };
+
+        for (int c = 0; c < cab.Length; c++)
+            ws.Cells[r, c + 1].Value = cab[c];
+
+        ws.Cells[r, 1, r, cab.Length].Style.Font.Bold = true;
+        ws.Cells[r, 1, r, cab.Length].Style.Fill.PatternType = ExcelFillStyle.Solid;
+        ws.Cells[r, 1, r, cab.Length].Style.Fill.BackgroundColor.SetColor(HexParaColor(COR_AZUL_CLARO));
+        r++;
+
+        foreach (var g in grupos)
+        {
+            var lista = g.ToList();
+            var rxList = lista.Select(d => d.RotX).ToList();
+            var ryList = lista.Select(d => d.RotY).ToList();
+            var rzList = lista.Select(d => d.RotZ).ToList();
+
+            ws.Cells[r, 1].Value = NomeAmigavel(g.Key);
+            ws.Cells[r, 2].Value = lista.Count;
+            ws.Cells[r, 3].Value = lista.Min(d => d.Tempo).ToString("F2");
+            ws.Cells[r, 4].Value = lista.Max(d => d.Tempo).ToString("F2");
+            ws.Cells[r, 5].Value = Media(rxList).ToString("F4");
+            ws.Cells[r, 6].Value = DesvioPadrao(rxList).ToString("F4");
+            ws.Cells[r, 7].Value = rxList.Min().ToString("F4");
+            ws.Cells[r, 8].Value = rxList.Max().ToString("F4");
+            ws.Cells[r, 9].Value = Media(ryList).ToString("F4");
+            ws.Cells[r, 10].Value = DesvioPadrao(ryList).ToString("F4");
+            ws.Cells[r, 11].Value = Media(rzList).ToString("F4");
+            ws.Cells[r, 12].Value = DesvioPadrao(rzList).ToString("F4");
+
+            if (r % 2 == 0)
+                AplicarZebra(ws.Cells[r, 1, r, 12]);
+
+            r++;
+        }
+
+        ws.Cells.AutoFitColumns();
+        ws.View.FreezePanes(5, 1);
+    }
+    // ─────────────────────────────────────────────
+    // Helpers estatísticos
+    // ─────────────────────────────────────────────
+    private static double Media(List<double> v) =>
+        v.Count == 0 ? 0 : v.Average();
+
+    private static double DesvioPadrao(List<double> v)
+    {
+        if (v.Count < 2) return 0;
+        double m = v.Average();
+        double soma = v.Sum(x => (x - m) * (x - m));
+        return Math.Sqrt(soma / (v.Count - 1));
+    }
+
+    private static void EscreverPar(ExcelWorksheet ws, int linha, int col, string chave, string valor)
+    {
+        ws.Cells[linha, col].Value = chave;
+        ws.Cells[linha, col].Style.Font.Bold = true;
+        ws.Cells[linha, col + 1].Value = valor;
     }
 }
