@@ -1,4 +1,4 @@
-// GraphTracker.cs – versão Unity (sem System.Drawing)
+// GraphTracker.cs – versão Unity (Compatível com Unity 6)
 // Requer: EPPlus 8.6.1 DLL em Assets/Plugins/EPPlus.dll
 // Como usar: chame GraphTracker.GerarExcel(csvPath, xlsxPath) a partir de qualquer MonoBehaviour
 
@@ -10,17 +10,16 @@ using System.Linq;
 using OfficeOpenXml;
 using OfficeOpenXml.Drawing.Chart;
 using OfficeOpenXml.Style;
-using DrawingColor = System.Drawing.Color;
-using System.Drawing;
+
 public static class GraphTracker
 {
     // ─────────────────────────────────────────────
-    // Cores em hex (sem System.Drawing)
+    // Cores em hex
     // ─────────────────────────────────────────────
     private const string COR_AZUL_ESCURO = "1F497D"; // cabeçalhos principais
-    private const string COR_AZUL_CLARO = "BDD7EE"; // cabeçalho secundário
-    private const string COR_ZEBRA = "D9E1F2"; // linhas alternadas
-    private const string COR_BRANCO = "FFFFFF"; // texto sobre fundo escuro
+    private const string COR_AZUL_CLARO = "BDD7EE";  // cabeçalho secundário
+    private const string COR_ZEBRA = "D9E1F2";       // linhas alternadas
+    private const string COR_BRANCO = "FFFFFF";      // texto sobre fundo escuro
 
     // ─────────────────────────────────────────────
     // Modelo de dados
@@ -171,7 +170,7 @@ public static class GraphTracker
     }
 
     // ─────────────────────────────────────────────
-    // Helpers de estilo (sem System.Drawing)
+    // Helpers de estilo (Corrigidos para Unity)
     // ─────────────────────────────────────────────
     private static void EstilizarCabecalho(ExcelRange celulas)
     {
@@ -190,19 +189,18 @@ public static class GraphTracker
         celulas.Style.Fill.BackgroundColor.SetColor(HexParaColor(COR_ZEBRA));
     }
 
-    private static DrawingColor HexParaColor(string hex)
+    private static System.Drawing.Color HexParaColor(string hex)
     {
         hex = hex.Replace("#", "");
-
-        int r = Convert.ToInt32(hex.Substring(0, 2), 16);
-        int g = Convert.ToInt32(hex.Substring(2, 2), 16);
-        int b = Convert.ToInt32(hex.Substring(4, 2), 16);
-
-        return DrawingColor.FromArgb(r, g, b);
+        if (hex.Length == 6)
+        {
+            int r = Convert.ToInt32(hex.Substring(0, 2), 16);
+            int g = Convert.ToInt32(hex.Substring(2, 2), 16);
+            int b = Convert.ToInt32(hex.Substring(4, 2), 16);
+            return System.Drawing.Color.FromArgb(r, g, b);
+        }
+        return System.Drawing.Color.White;
     }
-
-    // Converte hex "RRGGBB" → int que o EPPlus aceita em SetColor(int argb)
-
 
     private static ExcelChart CriarGraficoBase(ExcelWorksheet ws, string nome, string titulo,
         eChartType tipo, int linhaPos, int colPos, int largura, int altura)
@@ -413,11 +411,11 @@ public static class GraphTracker
         }
         EstilizarCabecalho(ws.Cells[1, 1, 1, col - 1]);
 
-        // Índice rápido (id, tempo) → Registro
-        var idx = new Dictionary<string, Registro>();
+        // OTIMIZAÇÃO GC: Usando tupla estrutura nativa em vez de alocar chaves em strings continuas
+        var idx = new Dictionary<(string, double), Registro>();
         foreach (var d in dados)
         {
-            string key = d.Id + "|" + d.Tempo.ToString("R");
+            var key = (d.Id, d.Tempo);
             if (!idx.ContainsKey(key)) idx[key] = d;
         }
 
@@ -428,10 +426,9 @@ public static class GraphTracker
             int c = 2;
             foreach (var g in grupos)
             {
-                string key = g.Key + "|" + t.ToString("R");
-                if (idx.ContainsKey(key))
+                var key = (g.Key, t);
+                if (idx.TryGetValue(key, out var reg))
                 {
-                    var reg = idx[key];
                     ws.Cells[linha, c].Value = reg.RotX;
                     ws.Cells[linha, c + 1].Value = reg.RotY;
                     ws.Cells[linha, c + 2].Value = reg.RotZ;
@@ -498,11 +495,10 @@ public static class GraphTracker
         var grupos = dados.GroupBy(d => d.Id).OrderBy(g => g.Key).ToList();
         double tempoTotal = dados.Max(d => d.Tempo) - dados.Min(d => d.Tempo);
 
-        EscreverPar(ws, r++, 1, "Total de registros", dados.Count.ToString());
-        EscreverPar(ws, r++, 1, "Trackers ativos", grupos.Count.ToString());
-        EscreverPar(ws, r++, 1, "Duracao da sessao (s)", tempoTotal.ToString("F2"));
-        EscreverPar(ws, r++, 1, "Freq. media de amostragem",
-            (dados.Count / Math.Max(tempoTotal, 1)).ToString("F1") + " Hz");
+        EscreverPar(ws, r++, 1, "Total de registros", dados.Count);
+        EscreverPar(ws, r++, 1, "Trackers ativos", grupos.Count);
+        EscreverPar(ws, r++, 1, "Duracao da sessao (s)", tempoTotal, "0.00");
+        EscreverPar(ws, r++, 1, "Freq. media de amostragem (Hz)", (dados.Count / Math.Max(tempoTotal, 1)), "0.0");
         r++;
 
         // Tabela de estatísticas
@@ -512,11 +508,11 @@ public static class GraphTracker
         r++;
 
         string[] cab = {
-        "Tracker", "N", "Tempo Min (s)", "Tempo Max (s)",
-        "RotX Media", "RotX Desvpad", "RotX Min", "RotX Max",
-        "RotY Media", "RotY Desvpad",
-        "RotZ Media", "RotZ Desvpad"
-    };
+            "Tracker", "N", "Tempo Min (s)", "Tempo Max (s)",
+            "RotX Media", "RotX Desvpad", "RotX Min", "RotX Max",
+            "RotY Media", "RotY Desvpad",
+            "RotZ Media", "RotZ Desvpad"
+        };
 
         for (int c = 0; c < cab.Length; c++)
             ws.Cells[r, c + 1].Value = cab[c];
@@ -535,16 +531,25 @@ public static class GraphTracker
 
             ws.Cells[r, 1].Value = NomeAmigavel(g.Key);
             ws.Cells[r, 2].Value = lista.Count;
-            ws.Cells[r, 3].Value = lista.Min(d => d.Tempo).ToString("F2");
-            ws.Cells[r, 4].Value = lista.Max(d => d.Tempo).ToString("F2");
-            ws.Cells[r, 5].Value = Media(rxList).ToString("F4");
-            ws.Cells[r, 6].Value = DesvioPadrao(rxList).ToString("F4");
-            ws.Cells[r, 7].Value = rxList.Min().ToString("F4");
-            ws.Cells[r, 8].Value = rxList.Max().ToString("F4");
-            ws.Cells[r, 9].Value = Media(ryList).ToString("F4");
-            ws.Cells[r, 10].Value = DesvioPadrao(ryList).ToString("F4");
-            ws.Cells[r, 11].Value = Media(rzList).ToString("F4");
-            ws.Cells[r, 12].Value = DesvioPadrao(rzList).ToString("F4");
+
+            ws.Cells[r, 3].Value = lista.Min(d => d.Tempo);
+            ws.Cells[r, 3].Style.Numberformat.Format = "0.00";
+
+            ws.Cells[r, 4].Value = lista.Max(d => d.Tempo);
+            ws.Cells[r, 4].Style.Numberformat.Format = "0.00";
+
+            // Atribuição de valor puramente numérico com formatação explícita do Excel
+            double[] valores = {
+                Media(rxList), DesvioPadrao(rxList), rxList.Min(), rxList.Max(),
+                Media(ryList), DesvioPadrao(ryList),
+                Media(rzList), DesvioPadrao(rzList)
+            };
+
+            for (int i = 0; i < valores.Length; i++)
+            {
+                ws.Cells[r, 5 + i].Value = valores[i];
+                ws.Cells[r, 5 + i].Style.Numberformat.Format = "0.0000";
+            }
 
             if (r % 2 == 0)
                 AplicarZebra(ws.Cells[r, 1, r, 12]);
@@ -555,6 +560,7 @@ public static class GraphTracker
         ws.Cells.AutoFitColumns();
         ws.View.FreezePanes(5, 1);
     }
+
     // ─────────────────────────────────────────────
     // Helpers estatísticos
     // ─────────────────────────────────────────────
@@ -569,10 +575,12 @@ public static class GraphTracker
         return Math.Sqrt(soma / (v.Count - 1));
     }
 
-    private static void EscreverPar(ExcelWorksheet ws, int linha, int col, string chave, string valor)
+    private static void EscreverPar(ExcelWorksheet ws, int linha, int col, string chave, object valor, string formato = null)
     {
         ws.Cells[linha, col].Value = chave;
         ws.Cells[linha, col].Style.Font.Bold = true;
         ws.Cells[linha, col + 1].Value = valor;
+        if (!string.IsNullOrEmpty(formato))
+            ws.Cells[linha, col + 1].Style.Numberformat.Format = formato;
     }
 }
