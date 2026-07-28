@@ -1,9 +1,20 @@
 using UnityEngine;
+using TMPro;
 
 public class GerenciadorDePontos : MonoBehaviour
 {
+    [Header("Configura√ß√µes")]
     public int pontuacaoTotal = 0;
 
+    [Header("Interface Visual (VR)")]
+    // Essa vari√°vel vai guardar o texto que o paciente vai ver
+    public TextMeshProUGUI textoPlacar;
+
+    void Start()
+    {
+        AtualizarInterface();
+        
+    }
     public void AdicionarPontos(int pontos)
     {
         pontuacaoTotal += pontos;
@@ -14,7 +25,7 @@ public class GerenciadorDePontos : MonoBehaviour
     {
         pontuacaoTotal -= pontos;
 
-        // Impede que a pontuaÁ„o fique negativa (opcional)
+        // Impede que a pontua√ß√£o fique negativa (opcional)
         if (pontuacaoTotal < 0)
         {
             pontuacaoTotal = 0;
@@ -25,7 +36,12 @@ public class GerenciadorDePontos : MonoBehaviour
 
     private void AtualizarInterface()
     {
-        // Aqui vocÍ pode depois conectar com um TextMeshPro no VR para o paciente ver!
-        Debug.Log($"PONTUA«√O ATUAL: {pontuacaoTotal}");
+        if (textoPlacar != null)
+        {
+            textoPlacar.text = $"Pontos: {pontuacaoTotal}";
+        }
+
+        // Aqui voc√™ pode depois conectar com um TextMeshPro no VR para o paciente ver!
+        Debug.Log($"PONTUA√á√ÉO ATUAL: {pontuacaoTotal}");
     }
 }
