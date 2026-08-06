@@ -2,69 +2,34 @@ using UnityEngine;
 
 public class DetectorDePisada : MonoBehaviour
 {
-    [Header("Áudio")]
-    public AudioSource fonteDeAudio;
-    public AudioClip somAcerto; // Som feliz/moeda
-    public AudioClip somErro;   // Som de buzzer/erro
-
-    [Header("Pontuação")]
-    public int pontosPorAcerto = 10;
-    public int penalidadePorErro = 5;
-
-    [Header("Configuração")]
     public GerenciadorDePontos gerenciador;
-    public float tempoDeEspera = 0.5f; // Evita contar a mesma pisada várias vezes
+    public AudioSource fonteDeAudio;
+    public AudioClip somAcerto;
 
-    private float tempoUltimaPisada = 0f;
+    private float tempoUltimoPonto = 0f;
+    public float tempoDeEspera = 2.0f;
 
-    private void Start()
+    void Start()
     {
-        // Se esquecer de colocar um AudioSource, o script cria um automaticamente
-        if (fonteDeAudio == null)
+        if (fonteDeAudio == null) fonteDeAudio = gameObject.AddComponent<AudioSource>();
+    }
+
+    void OnTriggerEnter(Collider outro)
+    {
+        if (Time.time - tempoUltimoPonto > tempoDeEspera)
         {
-            fonteDeAudio = gameObject.AddComponent<AudioSource>();
-            fonteDeAudio.playOnAwake = false;
+            if (outro.CompareTag("Checkpoint"))
+            {
+                // Apenas avisa o gerenciador e toca o som. A UI Ã© problema do Gerenciador agora!
+                gerenciador.AdicionarPontos(1);
+                TocarSom(somAcerto);
+                tempoUltimoPonto = Time.time;
+            }
         }
     }
 
-    private void OnTriggerEnter(Collider outro)
+    void TocarSom(AudioClip som)
     {
-        // Verifica se já passou o tempo mínimo desde a última pisada
-        if (Time.time - tempoUltimaPisada < tempoDeEspera) return;
-
-        if (outro.CompareTag("areabranca"))
-        {
-            RegistrarAcerto();
-        }
-        else if (outro.CompareTag("Obstaculo"))
-        {
-            RegistrarErro();
-        }
-    }
-
-    private void RegistrarAcerto()
-    {
-        tempoUltimaPisada = Time.time;
-
-        if (somAcerto != null)
-            fonteDeAudio.PlayOneShot(somAcerto);
-
-        if (gerenciador != null)
-            gerenciador.AdicionarPontos(pontosPorAcerto);
-
-        Debug.Log("<color=green>Pisou na parte branca! +Pontos</color>");
-    }
-
-    private void RegistrarErro()
-    {
-        tempoUltimaPisada = Time.time;
-
-        if (somErro != null)
-            fonteDeAudio.PlayOneShot(somErro);
-
-        if (gerenciador != null)
-            gerenciador.RemoverPontos(penalidadePorErro);
-
-        Debug.Log("<color=red>Pisou no attention/cone! -Pontos</color>");
+        if (fonteDeAudio != null && som != null) fonteDeAudio.PlayOneShot(som);
     }
 }
