@@ -1,5 +1,8 @@
 using UnityEngine;
 using TMPro;
+using System.Collections;
+
+
 
 public class GerenciadorDePontos : MonoBehaviour
 {
@@ -13,7 +16,7 @@ public class GerenciadorDePontos : MonoBehaviour
     void Start()
     {
         AtualizarInterface();
-        
+
     }
     public void AdicionarPontos(int pontos)
     {
