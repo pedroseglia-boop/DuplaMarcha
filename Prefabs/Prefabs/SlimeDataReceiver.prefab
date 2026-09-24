@@ -1,0 +1,254 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1 &8987170161714670140
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 4648470523089735581}
+  - component: {fileID: 6853539047795771238}
+  - component: {fileID: 1950042398913432161}
+  - component: {fileID: 6828284583050679791}
+  - component: {fileID: 7125154431745998987}
+  - component: {fileID: 3678254168939237198}
+  - component: {fileID: 4766753300403452168}
+  - component: {fileID: 9174981753170962064}
+  m_Layer: 0
+  m_Name: SlimeDataReceiver
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &4648470523089735581
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8987170161714670140}
+  serializedVersion: 2
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
+  m_LocalPosition: {x: 0.76126, y: 0, z: 2.63811}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &6853539047795771238
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8987170161714670140}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ed41645692348410d84991648165334c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: uOSC.Runtime::uOSC.uOscServer
+  port: 9001
+  autoStart: 1
+  onDataReceived:
+    m_PersistentCalls:
+      m_Calls:
+      - m_Target: {fileID: 1950042398913432161}
+        m_TargetAssemblyTypeName: SlimeOscPoseReceiver, Assembly-CSharp
+        m_MethodName: OnDataReceived
+        m_Mode: 0
+        m_Arguments:
+          m_ObjectArgument: {fileID: 0}
+          m_ObjectArgumentAssemblyTypeName: UnityEngine.Object, UnityEngine
+          m_IntArgument: 0
+          m_FloatArgument: 0
+          m_StringArgument: 
+          m_BoolArgument: 0
+        m_CallState: 2
+  onServerStarted:
+    m_PersistentCalls:
+      m_Calls: []
+  onServerStopped:
+    m_PersistentCalls:
+      m_Calls: []
+  _onDataReceivedEditor:
+    m_PersistentCalls:
+      m_Calls: []
+--- !u!114 &1950042398913432161
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8987170161714670140}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: bd15c8458b6244f4b876a73b9b1939f3, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SlimeOscPoseReceiver
+  logFirstMessageFromEachTracker: 1
+  logMalformedMessages: 1
+--- !u!114 &6828284583050679791
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8987170161714670140}
+  m_Enabled: 0
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8e8a7e17769ccc94aa8f0b10b0d6e87f, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::QuestSlimeSpaceAligner
+  receiver: {fileID: 1950042398913432161}
+  centerEyeAnchor: {fileID: 0}
+  positionPolicy: 0
+  referenceTrackerId: 5
+  slimeHeadTrackerId: head
+  referenceOffsetFromQuestHead: {x: 0, y: -0.9, z: 0.03}
+  questVerticalMotionWeight: 1
+  questAnchorSharpness: 20
+  continuouslyMatchHeadYaw: 0
+  calibrated: 0
+--- !u!114 &7125154431745998987
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8987170161714670140}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4b2e48d4f53bb224681280952972f94e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SlimeTrackerTargetDriver
+  receiver: {fileID: 0}
+  spaceAligner: {fileID: 0}
+  bindings:
+  - trackerId: 5
+    target: {fileID: 0}
+    applyPosition: 0
+    applyRotation: 1
+    manualPositionOffset: {x: 0, y: 0, z: 0}
+    manualRotationOffsetEuler: {x: 0, y: 0, z: 0}
+    capturedRotationOffset: {x: 0, y: 0, z: 0, w: 0}
+    capturedPositionOffset: {x: 0, y: 0, z: 0}
+    hasCapturedOffset: 0
+  - trackerId: 6
+    target: {fileID: 0}
+    applyPosition: 0
+    applyRotation: 1
+    manualPositionOffset: {x: 0, y: 0, z: 0}
+    manualRotationOffsetEuler: {x: 0, y: 0, z: 0}
+    capturedRotationOffset: {x: 0, y: 0, z: 0, w: 0}
+    capturedPositionOffset: {x: 0, y: 0, z: 0}
+    hasCapturedOffset: 0
+  - trackerId: 4
+    target: {fileID: 0}
+    applyPosition: 0
+    applyRotation: 1
+    manualPositionOffset: {x: 0, y: 0, z: 0}
+    manualRotationOffsetEuler: {x: 0, y: 0, z: 0}
+    capturedRotationOffset: {x: 0, y: 0, z: 0, w: 0}
+    capturedPositionOffset: {x: 0, y: 0, z: 0}
+    hasCapturedOffset: 0
+  - trackerId: 1
+    target: {fileID: 0}
+    applyPosition: 0
+    applyRotation: 1
+    manualPositionOffset: {x: 0, y: 0, z: 0}
+    manualRotationOffsetEuler: {x: 0, y: 0, z: 0}
+    capturedRotationOffset: {x: 0, y: 0, z: 0, w: 0}
+    capturedPositionOffset: {x: 0, y: 0, z: 0}
+    hasCapturedOffset: 0
+  - trackerId: 2
+    target: {fileID: 0}
+    applyPosition: 0
+    applyRotation: 1
+    manualPositionOffset: {x: 0, y: 0, z: 0}
+    manualRotationOffsetEuler: {x: 0, y: 0, z: 0}
+    capturedRotationOffset: {x: 0, y: 0, z: 0, w: 0}
+    capturedPositionOffset: {x: 0, y: 0, z: 0}
+    hasCapturedOffset: 0
+  - trackerId: 3
+    target: {fileID: 0}
+    applyPosition: 0
+    applyRotation: 1
+    manualPositionOffset: {x: 0, y: 0, z: 0}
+    manualRotationOffsetEuler: {x: 0, y: 0, z: 0}
+    capturedRotationOffset: {x: 0, y: 0, z: 0, w: 0}
+    capturedPositionOffset: {x: 0, y: 0, z: 0}
+    hasCapturedOffset: 0
+  positionSharpness: 10
+  rotationSharpness: 13
+  staleTimeoutSeconds: 0.5
+--- !u!114 &3678254168939237198
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8987170161714670140}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5ac827f7d4e9a2e449903f8207488c21, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::GaitStepDetector
+  leftFootTarget: {fileID: 0}
+  rightFootTarget: {fileID: 0}
+  swingStartSpeed: 0.35
+  swingStartHeight: 0.035
+  contactMaximumSpeed: 0.18
+  contactHeightTolerance: 0.025
+  minimumSwingDuration: 0.15
+  sameFootRefractoryTime: 0.35
+  leftSteps: 0
+  rightSteps: 0
+  totalSteps: 0
+  floorCalibrated: 0
+--- !u!114 &4766753300403452168
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8987170161714670140}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0ae93043fbdbaff4887a401085f4f39f, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::QuestCourseMetrics
+  centerEyeAnchor: {fileID: 0}
+  positionSharpness: 15
+  minimumIncrementMeters: 0.002
+  running: 0
+  courseOrigin: {x: 0, y: 0, z: 0}
+  courseDirection: {x: 0, y: 0, z: 1}
+  horizontalPathMeters: 0
+  courseCoordinateMeters: 0
+  maximumOutboundCoordinateMeters: 0
+  returnProgressMeters: 0
+--- !u!114 &9174981753170962064
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8987170161714670140}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: eaf83e5f23fe59b4bbcbadf699eb5002, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::QuestSlimeSynchronizedCsvLogger
+  receiver: {fileID: 1950042398913432161}
+  spaceAligner: {fileID: 6828284583050679791}
+  centerEyeAnchor: {fileID: 0}
+  stepDetector: {fileID: 3678254168939237198}
+  courseMetrics: {fileID: 4766753300403452168}
+  trackerIds: []
+  samplesPerSecond: 30
+  flushIntervalSeconds: 1
+  filePrefix: Quest_SlimeVR_Synchronized
+  startLoggingOnEnable: 1
